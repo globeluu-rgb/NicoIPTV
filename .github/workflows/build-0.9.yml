@@ -23,8 +23,12 @@ jobs:
       - name: Build unsigned APK
         working-directory: project
         run: ./gradlew assembleRelease
+      - name: Include signing utility
+        run: cp "$(find "$ANDROID_HOME/build-tools" -name apksigner.jar | sort -V | tail -1)" apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
           name: NicoIPTV-0.9-build
-          path: project/app/build/outputs/apk/release/app-release-unsigned.apk
+          path: |
+            project/app/build/outputs/apk/release/app-release-unsigned.apk
+            apksigner.jar
           if-no-files-found: error
