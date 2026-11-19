@@ -1,0 +1,30 @@
+name: Build NICO IPTV 0.9
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-0.9.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Prepare source
+        run: |
+          unzip -q NicoIPTV-0.9-codigo.zip -d project
+          chmod +x project/gradlew
+          sed -i '/signingConfig signingConfigs.release/d' project/app/build.gradle
+      - name: Build unsigned APK
+        working-directory: project
+        run: ./gradlew assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NicoIPTV-0.9-build
+          path: project/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
