@@ -1,10 +1,11 @@
-name: Build NICO IPTV 0.13
+name: Build NICO IPTV 0.14
 
 on:
   workflow_dispatch:
   push:
     paths:
       - '.github/workflows/build-0.9.yml'
+      - 'NicoIPTV-0.14-codigo.zip'
 
 jobs:
   build:
@@ -17,7 +18,7 @@ jobs:
           java-version: '17'
       - name: Prepare source
         run: |
-          unzip -q NicoIPTV-0.13-codigo.zip -d project
+          unzip -q NicoIPTV-0.14-codigo.zip -d project
           chmod +x project/gradlew
           sed -i '/signingConfig signingConfigs.release/d' project/app/build.gradle
       - name: Build unsigned APK
@@ -27,7 +28,7 @@ jobs:
         run: cp "$(find "$ANDROID_HOME/build-tools" -name apksigner.jar | sort -V | tail -1)" apksigner.jar
       - uses: actions/upload-artifact@v4
         with:
-          name: NicoIPTV-0.13-build
+          name: NicoIPTV-0.14-build
           path: |
             project/app/build/outputs/apk/release/app-release-unsigned.apk
             apksigner.jar
