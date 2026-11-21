@@ -1,11 +1,11 @@
-name: Build NICO IPTV 0.16
+name: Build NICO IPTV 0.17
 
 on:
   workflow_dispatch:
   push:
     paths:
       - '.github/workflows/build-0.9.yml'
-      - 'NicoIPTV-0.16-codigo.zip'
+      - 'NicoIPTV-0.17-codigo.zip'
 
 jobs:
   build:
@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare source
         run: |
-          unzip -q NicoIPTV-0.16-codigo.zip -d project
+          unzip -q NicoIPTV-0.17-codigo.zip -d project
           chmod +x project/gradlew
           sed -i '/signingConfig signingConfigs.release/d' project/app/build.gradle
       - uses: actions/setup-java@v4
@@ -27,11 +27,11 @@ jobs:
       - name: Package source
         run: |
           cd project
-          zip -qr ../NicoIPTV-0.16-codigo.zip . -x '.gradle/*' 'app/build/*'
+          zip -qr ../NicoIPTV-0.17-codigo.zip . -x '.gradle/*' 'app/build/*'
       - uses: actions/upload-artifact@v4
         with:
-          name: NicoIPTV-0.16-build
+          name: NicoIPTV-0.17-build
           path: |
             project/app/build/outputs/apk/release/app-release-unsigned.apk
-            NicoIPTV-0.16-codigo.zip
+            NicoIPTV-0.17-codigo.zip
           if-no-files-found: error
