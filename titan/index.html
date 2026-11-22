@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>NICO IPTV · Titan OS</title>
+  <style>
+    :root{font:18px Arial,sans-serif;color:#fff;background:#090f1c;--red:#e52d40;--panel:#111b2f;--focus:#fff}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(120deg,#0b1020,#18243d)}
+    header{height:86px;display:flex;align-items:center;justify-content:space-between;padding:18px 38px;background:#0b1224}
+    h1{font-size:30px;margin:0}h1 span{color:#f23a46}small{font-size:14px;color:#9eacc5}
+    button,input{font:inherit}button{background:#243450;color:#fff;border:3px solid transparent;border-radius:11px;padding:12px 17px;cursor:pointer}
+    button:focus,input:focus{outline:0;border-color:var(--focus);box-shadow:0 0 0 4px var(--red)}button.active{background:#d6283b}
+    main{padding:24px 38px}.menu{display:flex;gap:12px;margin-bottom:20px}.layout{display:grid;grid-template-columns:minmax(330px,35%) 1fr;gap:20px}
+    .panel{background:var(--panel);border-radius:18px;padding:20px;min-height:67vh}.player{background:#000;aspect-ratio:16/9;width:100%;border-radius:12px;overflow:hidden;position:relative}
+    video{width:100%;height:100%;object-fit:contain}.emptyPlayer{position:absolute;inset:0;display:grid;place-items:center;color:#92a3bd;text-align:center;padding:20px}
+    input{background:#0c172c;color:#fff;padding:13px;border:3px solid #64748b;border-radius:10px;width:100%}
+    label{display:block;margin:14px 0 6px}.login{max-width:640px;margin:8vh auto;background:var(--panel);padding:34px;border-radius:20px}
+    .muted{color:#b6c4db}.error{color:#ff9da7}.hidden{display:none!important}#status{font-size:15px;margin:13px 0}
+    #items,#episodes{display:flex;flex-direction:column;gap:8px;max-height:55vh;overflow:auto;padding:4px}.item{display:flex;align-items:center;gap:13px;text-align:left;width:100%;min-height:58px}
+    .item img{width:46px;height:40px;object-fit:contain}.item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.item.playing{background:#9f2032}
+    #details{margin-top:14px}#details h2{margin:0 0 8px}.controls{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap}.badge{display:inline-block;background:#203455;border-radius:20px;padding:5px 10px;font-size:14px}
+    #seriesPanel{margin-top:16px;background:#0b1427;border-radius:12px;padding:14px}#episodes{max-height:240px}.episode{justify-content:space-between}.episode b{color:#ffabb2}
+    @media(max-width:950px){.layout{grid-template-columns:1fr}.panel{min-height:auto}}
+  </style>
+</head>
+<body>
+  <section id="login" class="login">
+    <h1><span>NICO</span> IPTV</h1>
+    <p class="muted">Prueba independiente para Philips Titan OS · versión 0.2</p>
+    <form id="loginForm">
+      <label for="server">Servidor Xtream</label>
+      <input id="server" type="url" placeholder="http://servidor.ejemplo" required autofocus>
+      <label for="username">Usuario</label><input id="username" autocomplete="username" required>
+      <label for="password">Contraseña</label><input id="password" type="password" autocomplete="current-password" required>
+      <p><button id="loginButton" class="active" type="submit">Entrar</button></p>
+      <p id="loginError" class="error"></p>
+    </form>
+    <p class="muted">Las credenciales se borran al salir. Usa únicamente contenidos autorizados.</p>
+  </section>
+  <section id="app" class="hidden">
+    <header><h1><span>NICO</span> IPTV <small>TITAN OS 0.2</small></h1><button id="logout">Salir</button></header>
+    <main>
+      <nav class="menu"><button class="active" data-tab="live">TV en directo</button><button data-tab="vod">Películas</button><button data-tab="series">Series</button></nav>
+      <div class="layout">
+        <section class="panel"><h2 id="listTitle">Canales</h2><input id="search" placeholder="Buscar..." aria-label="Buscar"><p id="status" class="muted"></p><div id="items"></div></section>
+        <section class="panel">
+          <div class="player"><video id="video" controls autoplay playsinline></video><div id="emptyPlayer" class="emptyPlayer">Selecciona un canal o contenido</div></div>
+          <div id="details"><h2 id="selectedTitle">Ningún contenido seleccionado</h2><p id="epg" class="muted"></p><span id="format" class="badge hidden"></span></div>
+          <div id="seriesPanel" class="hidden"><h3 id="seasonTitle">Episodios</h3><div id="episodes"></div></div>
+          <div class="controls"><button id="prev">Anterior</button><button id="next">Siguiente</button><button id="fullscreen">Pantalla completa</button><button id="retry" class="hidden">Reintentar vídeo</button></div>
+        </section>
+      </div>
+    </main>
+  </section>
+  <script>
+  'use strict';
+  const $=s=>document.querySelector(s),$$=s=>Array.from(document.querySelectorAll(s));
+  const state={creds:null,tab:'live',items:[],visible:[],index:-1,lastUrl:'',fallbackTried:false};
+  function normalize(value){let v=value.trim();if(!/^https?:\/\//i.test(v))v='http://'+v;const u=new URL(v);if(!['http:','https:'].includes(u.protocol))throw Error('Protocolo no permitido');return u.origin;}
+  function safeImage(value){try{const u=new URL(value);return ['http:','https:'].includes(u.protocol)?u.href:''}catch(e){return ''}}
+  function api(action,params={}){const c=state.creds,url=new URL('/player_api.php',c.server);url.searchParams.set('username',c.username);url.searchParams.set('password',c.password);url.searchParams.set('action',action);Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));return fetch(url.href,{cache:'no-store'}).then(r=>{if(!r.ok)throw Error('HTTP '+r.status);return r.json()})}
+  function msg(value,isError=false){$('#status').textContent=value;$('#status').className=isError?'error':'muted'}
+  function clearVideo(){const v=$('#video');v.pause();v.removeAttribute('src');v.load();state.lastUrl='';state.fallbackTried=false;$('#retry').classList.add('hidden');$('#format').classList.add('hidden');$('#emptyPlayer').classList.remove('hidden')}
+  function titleOf(item){return item.name||item.title||'Sin título'}
+  function decodeText(value){if(!value)return '';try{return decodeURIComponent(escape(atob(value)))}catch(e){return value}}
+  function streamUrl(kind,id,extension){const c=state.creds;return c.server+'/'+kind+'/'+encodeURIComponent(c.username)+'/'+encodeURIComponent(c.password)+'/'+encodeURIComponent(id)+'.'+encodeURIComponent(extension)}
+  function playUrl(url,label){const v=$('#video');state.lastUrl=url;$('#emptyPlayer').classList.add('hidden');$('#retry').classList.add('hidden');$('#format').textContent=label;$('#format').classList.remove('hidden');v.src=url;v.play().catch(()=>{$('#epg').textContent='El televisor ha rechazado el inicio automático. Pulsa OK sobre el reproductor.'})}
+  async function loadTab(tab){state.tab=tab;state.index=-1;clearVideo();$('#selectedTitle').textContent='Selecciona un contenido';$('#epg').textContent='';$('#seriesPanel').classList.add('hidden');$$('[data-tab]').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));$('#listTitle').textContent={live:'Canales',vod:'Películas',series:'Series'}[tab];$('#search').value='';$('#items').replaceChildren();msg('Cargando…');try{const action={live:'get_live_streams',vod:'get_vod_streams',series:'get_series'}[tab],data=await api(action);state.items=Array.isArray(data)?data:[];renderItems();msg(state.items.length+' resultados')}catch(e){msg(connectionMessage(e),true)}}
+  function connectionMessage(e){const http=state.creds&&state.creds.server.indexOf('http://')===0&&location.protocol==='https:';return (http?'El servidor IPTV usa HTTP y esta página HTTPS puede bloquearlo. ':'')+'Error de conexión/CORS: '+e.message}
+  function renderItems(){const q=$('#search').value.trim().toLowerCase();state.visible=state.items.filter(x=>titleOf(x).toLowerCase().includes(q));const frag=document.createDocumentFragment();state.visible.slice(0,500).forEach((it,i)=>{const b=document.createElement('button');b.className='item';b.dataset.index=i;const src=safeImage(it.stream_icon||it.cover);if(src){const img=new Image();img.src=src;img.alt='';img.loading='lazy';b.appendChild(img)}const span=document.createElement('span');span.textContent=titleOf(it);b.appendChild(span);b.onclick=()=>selectItem(i);frag.appendChild(b)});$('#items').replaceChildren(frag);if(state.visible.length>500)msg('Mostrando 500 de '+state.visible.length+'. Usa Buscar para filtrar.')}
+  async function selectItem(i){const it=state.visible[i];if(!it)return;state.index=i;$$('#items .item').forEach((b,n)=>b.classList.toggle('playing',n===i));$('#selectedTitle').textContent=titleOf(it);$('#epg').textContent='';$('#seriesPanel').classList.add('hidden');state.fallbackTried=false;if(state.tab==='series'){clearVideo();await loadSeries(it);return}const ext=state.tab==='live'?'m3u8':(it.container_extension||'mp4'),kind=state.tab==='live'?'live':'movie';playUrl(streamUrl(kind,it.stream_id,ext),ext.toUpperCase());if(state.tab==='live')loadEpg(it.stream_id)}
+  async function loadEpg(id){try{const data=await api('get_short_epg',{stream_id:id,limit:2}),rows=data.epg_listings||[];if(rows.length){const now=rows[0],next=rows[1];$('#epg').textContent='Ahora: '+decodeText(now.title)+(next?' · Después: '+decodeText(next.title):'')}}catch(e){$('#epg').textContent='EPG no disponible'}}
+  async function loadSeries(it){$('#seriesPanel').classList.remove('hidden');$('#episodes').replaceChildren();$('#seasonTitle').textContent='Cargando episodios…';try{const data=await api('get_series_info',{series_id:it.series_id}),seasons=data.episodes||{},frag=document.createDocumentFragment();let count=0;Object.keys(seasons).sort((a,b)=>Number(a)-Number(b)).forEach(season=>{(seasons[season]||[]).forEach(ep=>{count++;const b=document.createElement('button');b.className='item episode';b.innerHTML='<span>T'+season+' · E'+(ep.episode_num||'?')+' · '+escapeHtml(ep.title||'Episodio')+'</span><b>▶</b>';b.onclick=()=>{const ext=ep.container_extension||'mp4';$('#selectedTitle').textContent=titleOf(it)+' · '+(ep.title||'Episodio');playUrl(streamUrl('series',ep.id,ext),ext.toUpperCase())};frag.appendChild(b)})});$('#episodes').replaceChildren(frag);$('#seasonTitle').textContent=count?count+' episodios':'No se encontraron episodios'}catch(e){$('#seasonTitle').textContent='No se pudieron cargar los episodios';$('#epg').textContent=connectionMessage(e)}}
+  function escapeHtml(v){return String(v).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+  function moveFocus(delta){const nodes=$$('button:not(.hidden),input:not(.hidden)'),current=nodes.indexOf(document.activeElement),next=current<0?0:Math.max(0,Math.min(nodes.length-1,current+delta));nodes[next].focus();nodes[next].scrollIntoView({block:'nearest'})}
+  $('#loginForm').onsubmit=async e=>{e.preventDefault();$('#loginError').textContent='';$('#loginButton').textContent='Conectando…';try{state.creds={server:normalize($('#server').value),username:$('#username').value.trim(),password:$('#password').value};const result=await api('get_live_categories');if(!Array.isArray(result))throw Error('respuesta no reconocida');$('#login').classList.add('hidden');$('#app').classList.remove('hidden');await loadTab('live');$('[data-tab="live"]').focus()}catch(err){$('#loginError').textContent=connectionMessage(err);state.creds=null}finally{$('#loginButton').textContent='Entrar'}};
+  $$('[data-tab]').forEach(b=>b.onclick=()=>loadTab(b.dataset.tab));$('#search').oninput=renderItems;
+  $('#logout').onclick=()=>{clearVideo();state.creds=null;$('#app').classList.add('hidden');$('#login').classList.remove('hidden');$('#password').value='';$('#server').focus()};
+  $('#prev').onclick=()=>selectItem(Math.max(0,state.index-1));$('#next').onclick=()=>selectItem(Math.min(state.visible.length-1,state.index+1));
+  $('#fullscreen').onclick=()=>{const el=$('.player');if(el.requestFullscreen)el.requestFullscreen();else if($('#video').webkitRequestFullscreen)$('#video').webkitRequestFullscreen()};
+  $('#retry').onclick=()=>state.lastUrl&&playUrl(state.lastUrl,$('#format').textContent||'VÍDEO');
+  $('#video').addEventListener('error',()=>{if(state.tab==='live'&&!state.fallbackTried&&state.lastUrl.indexOf('.m3u8')>0){state.fallbackTried=true;const ts=state.lastUrl.replace(/\.m3u8(?:\?.*)?$/,'.ts');$('#epg').textContent='HLS no compatible; probando flujo TS…';playUrl(ts,'TS')}else{$('#epg').textContent='No se puede reproducir este flujo. Posibles causas: códec, CORS, HTTP bloqueado o formato no compatible.';$('#retry').classList.remove('hidden')}});
+  document.addEventListener('keydown',e=>{if(['ArrowDown','ArrowRight'].includes(e.key)&&e.target.tagName!=='INPUT'){e.preventDefault();moveFocus(1)}else if(['ArrowUp','ArrowLeft'].includes(e.key)&&e.target.tagName!=='INPUT'){e.preventDefault();moveFocus(-1)}else if(['ChannelUp','PageUp','MediaTrackNext'].includes(e.key)){e.preventDefault();$('#next').click()}else if(['ChannelDown','PageDown','MediaTrackPrevious'].includes(e.key)){e.preventDefault();$('#prev').click()}else if((e.key==='Escape'||e.key==='Backspace'||e.key==='BrowserBack')&&!$('#app').classList.contains('hidden')){e.preventDefault();if(document.fullscreenElement&&document.exitFullscreen)document.exitFullscreen();else if(!$('#seriesPanel').classList.contains('hidden'))$('#seriesPanel').classList.add('hidden');else $('#search').focus()}});
+  </script>
+</body>
+</html>
